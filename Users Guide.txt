@@ -1,0 +1,77 @@
+# Typing Test Assistant
+
+A Python desktop utility for Windows that captures text from a selected screen area and automatically types it out. It is designed to assist with typing tests by simulating human-like typing with configurable speed, variation, and accuracy.
+
+## Requirements
+
+Before you can run this application, you need three things installed on your computer.
+
+#### 1. Python
+This script requires Python 3.9 or newer. You can download it from the official website:
+*   [python.org](https://www.python.org/downloads/)
+
+#### 2. Tesseract OCR Engine
+This is the most important step. The application cannot see text on the screen without this engine.
+*   Download the installer from the official Tesseract repository: [UB-Mannheim Tesseract-OCR](https://github.com/UB-Mannheim/tesseract/wiki)
+*   When running the installer, **it is critical that you check the box to "Add Tesseract to your system PATH"**. If you miss this step, the script will not work.
+
+#### 3. Python Libraries
+You will need a few Python libraries, including a new one for the final version.
+*   **pywin32:** Open a command prompt and run `pip install pywin32`
+*   **pyautogui:** Open a command prompt and run `pip install pyautogui`
+
+## How to Run the Application
+
+1.  **Download the Files:** Place the `main.py` and `requirements.txt` files in a dedicated folder on your computer (e.g., `C:\Dev\auto typer`).
+
+2.  **Delete Old Configuration:** If you have run previous versions, find and **delete the `config.json` file** from this folder. This is essential to load the new hotkey settings.
+
+3.  **Run as Administrator:**
+    *   Click the Start Menu and type `cmd`.
+    *   Right-click on "Command Prompt" and select **"Run as administrator"**. This is required to allow the application to type into other windows.
+
+4.  **Navigate to Folder:** In the administrator command prompt, navigate to your project folder.
+    ```cmd
+    cd C:\Dev\auto typer
+    ```
+
+5.  **Run the Script:**
+    ```cmd
+    python main.py
+    ```
+    The application is now running in the background. The console will show you the active hotkeys.
+
+## How to Use the Application
+
+This application is designed for typing tests and has a simple, hands-off workflow.
+
+1.  **Start the Process (Hotkey 1):** Press `Ctrl+Alt+]`. Your screen will dim, and your cursor will become a crosshair.
+
+2.  **Select Text:** Click and drag a box around the block of text you want to type.
+
+3.  **Get Ready (8-Second Delay):** As soon as you release the mouse, an 8-second countdown begins. A notification will appear. Your only job now is to **click your mouse inside the input field of your typing test** to give it focus.
+
+4.  **Automatic Typing:** After 8 seconds, the application will begin typing the captured text.
+
+### How to Pause and Resync
+
+If the script gets out of sync with your typing test, you can pause and manually catch up.
+
+1.  **Pause the Script (Hotkey 2):** While it's typing, press `Ctrl+Alt+[`.
+    *   Typing will stop instantly.
+    *   A small "Live Control" window will appear. It will show you the exact word and the next character it is waiting to type.
+
+2.  **Manually Catch Up:** In your typing test, type up to the point just before the character shown in the Live Control window.
+
+3.  **Resume:** Click the **"Resume & Hide"** button on the Live Control window.
+    *   The window will disappear.
+    *   A **3-second countdown** begins. This gives you time to click back into your typing test window.
+    *   After 3 seconds, typing will resume exactly where it left off.
+
+### Settings GUI
+
+*   **Open Settings:** Press `Ctrl+Alt+G` to open the main settings panel.
+*   **Adjust Parameters:** Change the WPM, Variation (%), and Accuracy (%) to your desired levels.
+*   **Save Button:** Click the **"Save"** button to apply your changes.
+*   **Hide Button:** Click the **"Hide"** button to make the window invisible. Press `Ctrl+Alt+G` again to show it.
+*   **Closing:** Closing the window with the 'X' will **not** save your changes. You must use the "Save" button.
