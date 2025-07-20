@@ -1,0 +1,7 @@
+{
+    "wpm": "90",
+    "variation": "10",
+    "accuracy": "98.5",
+    "activation_hotkey": "<ctrl>+<alt>+]",
+    "gui_hotkey": "<ctrl>+<alt>+g"
+}
