@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Practice Typing Test</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --done:#1a7f37; --bad:#c9252d; --pend:#888; --cur:#0b5fff; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif;
+         margin:0; padding:32px; }
+  h1 { font-size:18px; font-weight:600; margin:0 0 16px; }
+  #frame { border:1px solid #ccc; border-radius:8px; padding:20px 24px;
+           max-width:760px; background:#fff; }
+  /* A fixed three-line window that scrolls, mirroring typing.com's behaviour. */
+  #window { height:calc(3 * 2.2em); overflow:hidden; position:relative; }
+  #passage { font-family:Georgia,serif; font-size:22px; line-height:2.2em;
+             white-space:pre-wrap; transition:transform .12s linear; }
+  .ch { color:var(--pend); }
+  .ch.done { color:var(--done); }
+  .ch.bad  { color:var(--bad); text-decoration:underline; }
+  .ch.cur  { background:var(--cur); color:#fff; border-radius:2px; }
+  #stats { margin-top:16px; font-family:ui-monospace,monospace; font-size:14px;
+           display:flex; gap:24px; flex-wrap:wrap; }
+  #stats b { font-weight:600; }
+  #controls { margin-top:16px; display:flex; gap:12px; flex-wrap:wrap; }
+  button, select { font-size:15px; padding:10px 16px; min-height:44px; cursor:pointer; }
+  #sink { position:absolute; opacity:0; pointer-events:none; }
+  .hint { color:#555; font-size:13px; margin-top:12px; max-width:760px; }
+</style>
+</head>
+<body>
+<h1>Practice Typing Test <span style="font-weight:400;color:#666">— local harness, no network</span></h1>
+
+<div id="frame">
+  <div id="window"><div id="passage"></div></div>
+  <div id="stats">
+    <span>WPM <b id="s-wpm">0.0</b></span>
+    <span>accuracy <b id="s-acc">100.0%</b></span>
+    <span>typed <b id="s-typed">0</b>/<b id="s-total">0</b></span>
+    <span>errors <b id="s-err">0</b></span>
+    <span>elapsed <b id="s-time">0.00</b>s</span>
+  </div>
+</div>
+
+<div id="controls">
+  <select id="passage-pick" aria-label="Passage"></select>
+  <button id="btn-reset">Reset</button>
+  <button id="btn-copy">Copy keystroke log</button>
+</div>
+
+<p class="hint">
+  Click the passage then type. Already-typed characters recolor, which is the OCR
+  flicker case the append-only cursor must tolerate. Every keystroke is timestamped
+  with <code>performance.now()</code>; read it from the console with
+  <code>practice.log()</code> or <code>practice.stats()</code>.
+</p>
+
+<input id="sink" autocomplete="off" aria-hidden="true" tabindex="-1">
+
+<script>
+(function () {
+  "use strict";
+
+  var PASSAGES = {
+    "plain": "The quick brown fox jumps over the lazy dog. Pack my box with five " +
+             "dozen liquor jugs. How vexingly quick daft zebras jump!",
+    "punctuation-traps": "Mr. Smith paid 3.14 dollars, e.g. a small sum. See " +
+             "https://x.com/a.b for details. Dr. Jones agreed. The total was 1,024 units.",
+    "long-scroll": "Accessibility is not a feature that gets added at the end of a " +
+             "project. It is a property of decisions made throughout. A tool that " +
+             "demands a precise drag gesture has already excluded someone, no matter " +
+             "how carefully the rest of it was built. The remedy is rarely more " +
+             "settings; it is usually fewer required motions. Consider what the " +
+             "smallest possible interaction could be, and then build for that."
+  };
+
+  var passageEl = document.getElementById("passage");
+  var sink = document.getElementById("sink");
+  var pick = document.getElementById("passage-pick");
+
+  var target = "";
+  var spans = [];
+  var pos = 0;
+  var errors = 0;
+  var startedAt = null;
+  var keystrokes = [];
+  var lineHeight = 0;
+
+  function render(text) {
+    target = text;
+    passageEl.textContent = "";
+    spans = [];
+    for (var i = 0; i < text.length; i++) {
+      var s = document.createElement("span");
+      s.className = "ch";
+      s.textContent = text[i];
+      passageEl.appendChild(s);
+      spans.push(s);
+    }
+    lineHeight = parseFloat(getComputedStyle(passageEl).lineHeight) || 48;
+    document.getElementById("s-total").textContent = String(text.length);
+  }
+
+  function paint() {
+    for (var i = 0; i < spans.length; i++) {
+      spans[i].classList.remove("cur");
+    }
+    if (pos < spans.length) spans[pos].classList.add("cur");
+    scrollToCursor();
+    updateStats();
+  }
+
+  // Keep the cursor on the middle line of the three-line window.
+  function scrollToCursor() {
+    if (!spans.length) return;
+    var cursorTop = spans[Math.min(pos, spans.length - 1)].offsetTop;
+    var line = Math.round(cursorTop / lineHeight);
+    var shift = Math.max(0, line - 1) * lineHeight;
+    passageEl.style.transform = "translateY(" + (-shift) + "px)";
+  }
+
+  function elapsed() {
+    return startedAt === null ? 0 : (performance.now() - startedAt) / 1000;
+  }
+
+  function grossWpm() {
+    var secs = elapsed();
+    if (secs <= 0) return 0;
+    return (pos / 5) / (secs / 60);
+  }
+
+  function updateStats() {
+    document.getElementById("s-wpm").textContent = grossWpm().toFixed(1);
+    var acc = pos === 0 ? 100 : ((pos - errors) / pos) * 100;
+    document.getElementById("s-acc").textContent = Math.max(0, acc).toFixed(1) + "%";
+    document.getElementById("s-typed").textContent = String(pos);
+    document.getElementById("s-err").textContent = String(errors);
+    document.getElementById("s-time").textContent = elapsed().toFixed(2);
+  }
+
+  function reset(name) {
+    var key = name || pick.value || "plain";
+    pos = 0;
+    errors = 0;
+    startedAt = null;
+    keystrokes = [];
+    render(PASSAGES[key] !== undefined ? PASSAGES[key] : PASSAGES.plain);
+    paint();
+    sink.focus();
+  }
+
+  function onChar(ch) {
+    if (pos >= target.length) return;
+    if (startedAt === null) startedAt = performance.now();
+    var expected = target[pos];
+    var ok = ch === expected;
+    keystrokes.push({ t: performance.now(), ch: ch, expected: expected, ok: ok });
+    spans[pos].classList.remove("cur");
+    spans[pos].classList.add(ok ? "done" : "bad");
+    if (!ok) errors++;
+    pos++;
+    paint();
+  }
+
+  function onBackspace() {
+    if (pos === 0) return;
+    keystrokes.push({ t: performance.now(), ch: "\b", expected: null, ok: null });
+    pos--;
+    if (spans[pos].classList.contains("bad")) errors = Math.max(0, errors - 1);
+    spans[pos].className = "ch";
+    paint();
+  }
+
+  // Primary path: real keystrokes, whether from human hands or SendInput. These
+  // arrive as keydown, and preventDefault here stops any beforeinput following,
+  // so the fallback below cannot double-count them.
+  document.addEventListener("keydown", function (e) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === "Backspace") { e.preventDefault(); onBackspace(); return; }
+    if (e.key === "Enter") { e.preventDefault(); onChar("\n"); return; }
+    if (e.key && e.key.length === 1) { e.preventDefault(); onChar(e.key); }
+  });
+
+  // Fallback path: synthetic text insertion that produces no keydown at all --
+  // CDP Input.insertText, IME composition, paste. Without this the harness is
+  // undrivable by browser automation.
+  sink.addEventListener("beforeinput", function (e) {
+    e.preventDefault();
+    sink.value = "";
+    if (e.inputType === "deleteContentBackward") { onBackspace(); return; }
+    if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+      onChar("\n");
+      return;
+    }
+    if (e.data) {
+      // A batched insertion shares one timestamp; only the keydown path carries
+      // per-keystroke timing fidelity.
+      for (var i = 0; i < e.data.length; i++) onChar(e.data[i]);
+    }
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", function () { reset(); });
+  document.getElementById("btn-copy").addEventListener("click", function () {
+    var text = JSON.stringify(keystrokes, null, 2);
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    console.log(text);
+  });
+  pick.addEventListener("change", function () { reset(pick.value); });
+  document.getElementById("frame").addEventListener("click", function () { sink.focus(); });
+
+  Object.keys(PASSAGES).forEach(function (k) {
+    var o = document.createElement("option");
+    o.value = k;
+    o.textContent = k;
+    pick.appendChild(o);
+  });
+
+  // Automation surface, used by Plan 2's end-to-end tests.
+  window.practice = {
+    reset: reset,
+    log: function () { return keystrokes.slice(); },
+    stats: function () {
+      return {
+        wpm: grossWpm(),
+        accuracy: pos === 0 ? 100 : ((pos - errors) / pos) * 100,
+        typed: pos,
+        total: target.length,
+        errors: errors,
+        elapsed: elapsed(),
+        typedText: target.slice(0, pos),
+        target: target
+      };
+    },
+    passages: function () { return Object.keys(PASSAGES); }
+  };
+
+  reset("plain");
+})();
+</script>
+</body>
+</html>
