@@ -29,7 +29,7 @@
 
 ### Task 1: Clock adapter and FakeClock
 
-The spike measured Windows' default `time.sleep` granularity at ~15.6 ms, which is 7% jitter on the ~218 ms interval of 55 WPM — enough to distort rhythm that the pacing engine carefully shaped. A high-resolution waitable timer is preferred over `timeBeginPeriod(1)` because it does not alter a global system setting on the user's behalf.
+Windows' timer resolution can be as coarse as 15.625 ms, which would be 7% jitter on the ~218 ms interval of 55 WPM — enough to distort the rhythm the pacing engine shaped. Note that this is the *coarsest* value: whether it applies depends on whether any process has raised the global resolution, which is outside our control. A high-resolution waitable timer is accurate regardless, so pacing quality does not depend on unrelated software. It is preferred over `timeBeginPeriod(1)`, which would change a global setting on the user's behalf.
 
 **Files:**
 - Create: `typing_assistant/adapters/__init__.py`
@@ -154,10 +154,18 @@ Expected: 5 passed.
 # typing_assistant/adapters/clock.py
 """High-resolution sleeping.
 
-Windows' default timer granularity is ~15.6 ms. At 55 WPM a character interval
-is ~218 ms, so that granularity is 7% jitter -- enough to distort the rhythm
-core.pacing shaped deliberately. A high-resolution waitable timer fixes this
-without calling timeBeginPeriod, which would change a global system setting.
+Windows' timer resolution can be as coarse as 15.625 ms. At 55 WPM a character
+interval is ~218 ms, so that quantisation would be 7% jitter -- enough to distort
+the rhythm core.pacing shaped deliberately.
+
+Measured caveat: 15.625 ms is the *coarsest* value, not necessarily the current
+one. On the development machine NtQueryTimerResolution reported current=1.000 ms
+because an unrelated process had already raised it, and time.sleep was equally
+accurate there. The point of this timer is not that it is faster, but that it is
+fine-grained whether or not anything else on the machine has raised the global
+resolution -- so pacing does not silently degrade depending on what the user
+happens to be running. It also avoids timeBeginPeriod, which would raise that
+resolution globally on the user's behalf.
 
 Requires Windows 10 1803 or newer for CREATE_WAITABLE_TIMER_HIGH_RESOLUTION;
 falls back to time.sleep otherwise, and reports which it got.
@@ -243,10 +251,32 @@ class SystemClock:
 
 Marked `manual` because it asserts wall-clock behaviour and is timing-sensitive on a shared CI runner.
 
+These tests assert **absolute** accuracy rather than beating `time.sleep`. Measurement during execution showed the development machine already running at 1.000 ms timer resolution, where `time.sleep` is equally accurate — so a comparative assertion would pass by luck rather than prove anything. See the corrected spec §6.8.
+
 ```python
 # tests/manual/test_clock_real.py
+"""Real-clock checks. Run explicitly: pytest tests/manual -m manual -s
+
+Measured on Windows 11, and worth recording because it corrects an assumption:
+the system timer resolution was *already* 1.000 ms, not the 15.625 ms often
+quoted as Windows' default. Some other process on the machine had raised it.
+
+    timer resolution: current=1.000 ms  min=0.500 ms  max=15.625 ms
+    target  5.0 ms | waitable median 5.52 | time.sleep median 5.16
+
+So on a machine in that state the waitable timer is no faster than time.sleep.
+The reason to use it anyway is that 15.625 ms is the *coarsest* value, which is
+what applies when nothing has raised the resolution -- and whether anything has
+is entirely outside our control. The waitable timer is fine-grained regardless,
+so rhythm does not silently degrade depending on what else the user is running.
+
+These tests therefore assert absolute accuracy rather than a comparison, because
+a comparison only shows a difference on a machine we cannot arrange to have.
+"""
+
 from __future__ import annotations
 
+import ctypes
 import statistics
 import time
 
@@ -256,15 +286,30 @@ from typing_assistant.adapters.clock import SystemClock
 
 pytestmark = pytest.mark.manual
 
+#: Slack above the requested duration. Covers scheduler latency on a busy box.
+_TOLERANCE = 0.004
+
+
+def _system_timer_resolution_ms() -> tuple[float, float, float]:
+    """Return (current, minimum, maximum) timer resolution in milliseconds."""
+    ntdll = ctypes.WinDLL("ntdll")
+    current = ctypes.c_ulong()
+    minimum = ctypes.c_ulong()
+    maximum = ctypes.c_ulong()
+    ntdll.NtQueryTimerResolution(
+        ctypes.byref(maximum), ctypes.byref(minimum), ctypes.byref(current)
+    )
+    return current.value / 10000, minimum.value / 10000, maximum.value / 10000
+
 
 def test_high_resolution_timer_is_available():
     with SystemClock() as clock:
         assert clock.high_resolution, "needs Windows 10 1803+"
 
 
-def test_short_sleeps_beat_default_granularity():
-    """A 5 ms sleep must not take ~15.6 ms, which is what time.sleep gives."""
-    target = 0.005
+@pytest.mark.parametrize("target", [0.002, 0.005, 0.015, 0.050])
+def test_sleep_is_accurate_in_absolute_terms(target):
+    """The property we actually depend on: asked for t, got about t."""
     with SystemClock() as clock:
         samples = []
         for _ in range(20):
@@ -273,32 +318,68 @@ def test_short_sleeps_beat_default_granularity():
             samples.append(clock.now() - start)
 
     median = statistics.median(samples)
-    assert median < 0.010, f"median {median * 1000:.2f} ms, expected well under 10 ms"
+    print(f"\n  target {target * 1000:5.1f} ms -> median {median * 1000:5.2f} ms")
+    assert median >= target * 0.9, "must not undershoot"
+    assert median <= target + _TOLERANCE, (
+        f"median {median * 1000:.2f} ms exceeds {(target + _TOLERANCE) * 1000:.2f} ms"
+    )
 
 
-def test_sleep_does_not_undershoot():
-    target = 0.020
+def test_sleep_is_not_quantised_to_the_coarse_default():
+    """Consecutive short sleeps must not all land on a 15.6 ms boundary.
+
+    This is the failure mode the waitable timer exists to prevent. It only
+    actually bites when no process has raised the global resolution, so on a
+    machine already running at 1 ms this passes either way -- it is a guard
+    against regression, not a demonstration.
+    """
     with SystemClock() as clock:
-        start = clock.now()
-        clock.sleep(target)
-        elapsed = clock.now() - start
-    assert elapsed >= target * 0.9
+        samples = [0.0] * 10
+        for i in range(10):
+            start = clock.now()
+            clock.sleep(0.003)
+            samples[i] = clock.now() - start
+
+    assert statistics.median(samples) < 0.010
 
 
-def test_reference_time_sleep_granularity_for_comparison():
-    """Records what we are improving on; informational, always passes."""
-    samples = []
-    for _ in range(10):
-        start = time.perf_counter()
-        time.sleep(0.005)
-        samples.append(time.perf_counter() - start)
-    print(f"\ntime.sleep(5ms) median: {statistics.median(samples) * 1000:.2f} ms")
+def test_records_timer_resolution_and_comparison():
+    """Informational: always passes, prints the numbers behind the docstring."""
+    current, minimum, maximum = _system_timer_resolution_ms()
+    print(
+        f"\n  system timer resolution: current={current:.3f} ms "
+        f"min={minimum:.3f} ms max={maximum:.3f} ms"
+    )
+    if current > 5.0:
+        print("  -> coarse resolution in effect; the waitable timer is doing real work")
+    else:
+        print(
+            "  -> another process has already raised resolution, so time.sleep "
+            "would also be accurate right now"
+        )
+
+    with SystemClock() as clock:
+        for target in (0.005, 0.015):
+            waitable = statistics.median(
+                [_elapsed(clock.sleep, target) for _ in range(20)]
+            )
+            builtin = statistics.median([_elapsed(time.sleep, target) for _ in range(20)])
+            print(
+                f"  target {target * 1000:5.1f} ms | waitable {waitable * 1000:6.2f} ms "
+                f"| time.sleep {builtin * 1000:6.2f} ms"
+            )
+
+
+def _elapsed(sleeper, seconds: float) -> float:
+    start = time.perf_counter()
+    sleeper(seconds)
+    return time.perf_counter() - start
 ```
 
 - [ ] **Step 8: Run the manual tests explicitly**
 
 Run: `pytest tests/manual/test_clock_real.py -v -m manual -s`
-Expected: 4 passed. Note the printed `time.sleep` median for comparison — on stock Windows it is around 15 ms while the waitable timer should be near 5 ms.
+Expected: 7 passed. Read the printed numbers rather than just the result. `test_records_timer_resolution_and_comparison` reports the machine's current timer resolution: if `current` is already near 1 ms, some other process raised it and `time.sleep` will look just as accurate — that is expected and is not a failure of the waitable timer, whose value is being fine-grained when nothing has raised it.
 
 - [ ] **Step 9: Confirm the default run still excludes them**
 

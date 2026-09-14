@@ -14,4 +14,7 @@ include = ["typing_assistant*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --strict-markers"
+addopts = "-v --strict-markers -m 'not manual'"
+markers = [
+    "manual: injects real keystrokes or needs a focused window; excluded from the default run",
+]

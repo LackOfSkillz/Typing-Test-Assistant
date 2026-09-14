@@ -257,10 +257,24 @@ indistinguishable from a physical keyboard at the event level, and fixes pyautog
 layout-dependent breakage on non-US layouts as a side effect.
 
 Timing comes from `CreateWaitableTimerExW` with `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION`
-(`adapters/clock.py`). Windows' default `time.sleep` granularity is about 15.6 ms, which
-is 7% jitter on the roughly 218 ms interval of 55 WPM — enough to distort rhythm. A
-waitable timer is preferred over `timeBeginPeriod(1)` because it does not change a global
-system setting on the user's behalf.
+(`adapters/clock.py`), rather than `time.sleep`.
+
+**Corrected 2026-09-14 after measurement.** An earlier draft of this section stated that
+Windows' `time.sleep` granularity *is* about 15.6 ms. That is the coarsest value, not the
+operating one. Measured on the development machine, `NtQueryTimerResolution` reported
+`current=1.000 ms, min=0.500 ms, max=15.625 ms`, because an unrelated process had already
+raised the global resolution — and in that state `time.sleep` is just as accurate as a
+waitable timer (5 ms target: 5.48 ms versus 5.51 ms).
+
+The argument for the waitable timer is therefore not that it is faster. It is that
+15.625 ms applies whenever *nothing* has raised the resolution, and whether anything has
+is entirely outside this application's control. A fine-grained timer keeps rhythm stable
+regardless of what else the user happens to be running, where relying on `time.sleep`
+would make pacing quality depend on unrelated software. At 55 WPM a character interval is
+about 218 ms, so coarse quantisation would be roughly 7% jitter on every keystroke.
+
+It is also preferred over `timeBeginPeriod(1)`, which would raise the resolution globally
+on the user's behalf and affect every other process on the machine.
 
 ### 6.9 Resume and resync
 
