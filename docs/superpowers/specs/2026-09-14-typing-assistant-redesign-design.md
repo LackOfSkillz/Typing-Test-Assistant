@@ -56,6 +56,7 @@ Reference target for all testing: <https://www.typing.com/student/tests>.
 | OCR uncertainty | Auto-correct, prompt only on low confidence | Near-zero clock cost in the common case |
 | Typing engine | Target WPM, self-calibrating, closed-loop | The setting becomes honest |
 | Passage tracking | Append-only cursor | Makes retyping impossible by construction |
+| Licence | 0BSD (Zero-Clause BSD) | Most permissive workable option; keeps the liability disclaimer |
 | Engineering approach | Restructure into a package around a testable core, same stack | Keeps Python/Tesseract/CustomTkinter; buys regression safety |
 
 ## 5. Architecture
@@ -449,8 +450,16 @@ Every defect found in the current implementation, and where it is addressed.
 | 24 | Documentation describes features that do not exist (pause hotkey, Live Control window, Save button) | Users Guide | 11 |
 | 25 | No tests, no CI, no README.md, no packaging | repo | 9, 11 |
 
-## 11. Packaging and documentation
+## 11. Licence, packaging and documentation
 
+- **Licence: 0BSD** (Zero-Clause BSD), chosen as the most permissive workable option.
+  It grants use, copying, modification and distribution with no attribution requirement
+  and no obligation to reproduce the licence, is OSI-approved and SPDX-recognized, and
+  retains the warranty and liability disclaimer. CC0 and the Unlicense are marginally
+  more permissive in principle, but CC0 explicitly withholds patent rights and the
+  Unlicense's drafting is rejected by some corporate legal teams, so both can reduce
+  real-world reuse. The disclaimer carries weight here specifically because this
+  software drives the user's keyboard.
 - `requirements.txt` replaced by proper dependency declaration with every dependency
   pinned. `pyautogui` is dropped; `opencv-python-headless` is added.
 - `README.md` written, so GitHub renders it. `Users Guide.txt` is rewritten to describe
@@ -471,8 +480,6 @@ Every defect found in the current implementation, and where it is addressed.
 
 ## 13. Out of scope
 
-- Choice of software licence. The repository currently has none. MIT is recommended;
-  this requires the author's decision and will be raised in the first pull request.
 - Code signing.
 - Cross-platform support.
 - A native accessible UI toolkit. The boundary in section 5 makes this a later,
