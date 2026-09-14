@@ -1,0 +1,17 @@
+[project]
+name = "typing-assistant"
+version = "2.0.0.dev0"
+description = "Assistive typing tool that reads text from the screen and types it for you"
+requires-python = ">=3.9"
+license = { text = "0BSD" }
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["typing_assistant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
