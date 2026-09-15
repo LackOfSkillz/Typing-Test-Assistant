@@ -14,16 +14,28 @@ required, no conditions.
 
 ## Status
 
-**v1 works and is what this document describes.** It is a single `main.py`, written in
-early 2025, and it does the job with rough edges.
+**The v2 typing engine works and is usable now.** Give it text, it types it:
 
-**v2 is in progress** — a rebuild around a testable core, with a real panic stop,
-honest WPM, saved region profiles, and no click-and-drag anywhere. The design is
-written up in
-[`docs/superpowers/specs/2026-09-14-typing-assistant-redesign-design.md`](docs/superpowers/specs/2026-09-14-typing-assistant-redesign-design.md),
-including a register of 25 defects in v1 and where each is being fixed.
+```
+python -m typing_assistant calibrate --wpm 55
+python -m typing_assistant type --text "hello there" --wpm 55
+python -m typing_assistant type --file passage.txt --wpm 45
+```
 
-Nothing below describes v2. If a feature isn't in this README, it isn't in the code yet.
+- **Any keypress pauses it. Escape aborts.** Stopping takes at most one character.
+- **No countdown.** It waits for you indefinitely, then starts when you press Enter.
+- **The WPM number is real.** Measured end-to-end into a live window: asking for 40,
+  55 and 70 produced 39.97, 54.94 and 69.89 WPM.
+- **No Administrator required.**
+
+**What v2 cannot do yet: read text off the screen.** OCR is not wired in, so for the
+capture-a-passage-from-the-screen workflow, v1 (`python main.py`) is still the tool —
+with the rough edges listed below. Remaining work is in
+[`docs/superpowers/plans/`](docs/superpowers/plans/), and the
+[design spec](docs/superpowers/specs/2026-09-14-typing-assistant-redesign-design.md)
+carries the 25-defect register it all works from.
+
+**v1 still works unchanged** and is what the rest of this document describes.
 
 ---
 
